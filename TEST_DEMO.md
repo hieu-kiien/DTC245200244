@@ -52,7 +52,7 @@ docker compose exec db sh -c 'pg_isready -U postgres -d "$POSTGRES_DB"'
 ```logql
 {job="webapp"} |= "LOGIN_FAILED"
 {job="webapp"} |~ "(ERROR|Exception|Failed)"
-{job="nginx"} |~ "\\" 5[0-9]{2} "
+{job="nginx"} |~ " 5[0-9]{2} "
 ```
 
 - [ ] `./scripts/attack-sim.sh https://localhost` → xem log LOGIN_FAILED trong Loki.

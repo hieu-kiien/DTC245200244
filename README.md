@@ -70,7 +70,7 @@ Grafana → Explore → Loki:
 ```logql
 {job="webapp"} |= "LOGIN_FAILED"
 {job="webapp"} |~ "(ERROR|Exception|Failed)"
-{job="nginx"} |~ "\\" 5[0-9]{2} "
+{job="nginx"} |~ " 5[0-9]{2} "
 {job="webapp"} |~ "LOGIN_FAILED|ALERT_RECEIVED"
 ```
 
