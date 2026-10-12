@@ -1,0 +1,61 @@
+name: PetShop Docker integration smoke (Linux)
+on:
+  push:
+    branches:
+      - fix/petshop-review
+  pull_request:
+  workflow_dispatch:
+jobs:
+  stack-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate temporary local credentials and HTTPS certificate
+        run: |
+          ./scripts/gen-env.sh
+          ./scripts/gen-cert.sh
+      - name: Start Docker Compose stack
+        run: docker compose up -d --build
+      - name: Verify runtime Node dependencies
+        run: docker compose exec -T webapp node -e "require('express'); require('pg'); require('prom-client')"
+      - name: Validate Nginx configuration
+        run: docker compose exec -T nginx nginx -t
+      - name: Wait for webapp and PostgreSQL
+        run: |
+          for i in $(seq 1 60); do
+            if curl -ksf https://localhost/health > /dev/null; then echo 'health endpoint OK'; exit 0; fi
+            sleep 5
+          done
+          echo 'PetShop webapp did not become healthy' >&2
+          exit 1
+      - name: CRUD/login smoke test
+        run: ./tests/smoke_api.sh
+      - name: Validate Prometheus targets
+        run: |
+          python3 - <<'PY'
+          import json,time,urllib.request
+          required={'prometheus','webapp','cadvisor','nginx','postgres'}
+          for _ in range(24):
+              try:
+                  with urllib.request.urlopen('http://127.0.0.1:9090/api/v1/targets',timeout=5) as r:
+                      o=json.load(r)
+                  targets=o['data']['activeTargets']
+                  states={t['labels']['job']:t['health'] for t in targets}
+                  if all(states.get(x)=='up' for x in required):
+                      print('All required Prometheus jobs UP:',states); break
+                  print('Waiting for scrape targets:',states)
+              except Exception as e: print('Waiting for Prometheus:',e)
+              time.sleep(5)
+          else: raise SystemExit('One or more required Prometheus jobs are not UP')
+          PY
+      - name: Verify Loki log ingestion and Grafana brute-force webhook
+        run: ./tests/check_logql.sh
+      - name: Inspect service status and recent logs
+        if: always()
+        run: |
+          docker compose ps || true
+          docker compose logs --tail 80 db webapp nginx loki promtail prometheus grafana postgres-exporter nginx-exporter cadvisor || true
+      - name: Stop stack (keep data ephemeral on runner)
+        if: always()
+        run: docker compose down
