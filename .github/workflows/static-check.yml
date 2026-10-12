@@ -1,0 +1,24 @@
+name: PetShop static checks (not a live-stack test)
+on:
+  push:
+  pull_request:
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Check JavaScript and scripts
+        run: |
+          node --check app/server.js
+          node --check app/public/app.js
+          for f in scripts/*.sh db/*.sh tests/*.sh; do bash -n "$f"; done
+      - name: Generate local secrets/cert and validate Compose syntax
+        run: |
+          ./scripts/gen-env.sh
+          ./scripts/gen-cert.sh
+          docker compose config -q
+      - name: Validate dependency lockfile
+        run: npm ci --prefix app --omit=dev
