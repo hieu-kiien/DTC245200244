@@ -1,18 +1,26 @@
 #!/bin/sh
-# Sinh file .env với mật khẩu mạnh ngẫu nhiên (không commit file này)
+set -eu
 cd "$(dirname "$0")/.."
-[ -f .env ] && { echo ".env đã tồn tại"; exit 0; }
-r() { openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20; }
-cat > .env <<EOF
+[ ! -f .env ] || { echo '.env đã tồn tại; không ghi đè'; exit 0; }
+[ "$(id -u)" -ne 0 ] || { echo 'Không chạy gen-env.sh bằng root/sudo'; exit 1; }
+command -v openssl >/dev/null || { echo 'Yêu cầu openssl'; exit 1; }
+randpass() { printf '%sAa1' "$(openssl rand -hex 16)"; }
+umask 077
+cat > .env <<EOV
 DB_NAME=petshop
 DB_USER=petshop_app
-DB_PASSWORD=$(r)Aa1
+DB_PASSWORD=$(randpass)
+DB_ADMIN_PASSWORD=$(randpass)
+MONITOR_DB_USER=petshop_monitor
+MONITOR_DB_PASSWORD=$(randpass)
 ADMIN_USER=admin
-ADMIN_PASSWORD=$(r)Aa1
+ADMIN_PASSWORD=$(randpass)
 PGADMIN_EMAIL=admin@petshop.local
-PGADMIN_PASSWORD=$(r)Aa1
+PGADMIN_PASSWORD=$(randpass)
 GRAFANA_USER=admin
-GRAFANA_PASSWORD=$(r)Aa1
-EOF
+GRAFANA_PASSWORD=$(randpass)
+NGINX_UID=$(id -u)
+NGINX_GID=$(id -g)
+EOV
 chmod 600 .env
-echo "Đã tạo .env"
+printf '%s\n' 'Đã tạo .env; KHÔNG commit file này.'

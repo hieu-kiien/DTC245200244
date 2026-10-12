@@ -10,25 +10,25 @@ CREATE TABLE IF NOT EXISTS pets (
   name VARCHAR(80) NOT NULL,
   species VARCHAR(40) NOT NULL,
   breed VARCHAR(80),
-  age NUMERIC(4,1),
-  price NUMERIC(12,0),
-  status VARCHAR(20) DEFAULT 'Còn hàng',
+  age NUMERIC(4,1) CHECK (age >= 0),
+  price NUMERIC(12,0) CHECK (price >= 0),
+  status VARCHAR(20) DEFAULT 'Còn hàng' CHECK (status IN ('Còn hàng','Đã bán','Đặt trước')),
   customer_id INT REFERENCES customers(id) ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS services (
   id SERIAL PRIMARY KEY,
   name VARCHAR(100) NOT NULL,
   description TEXT,
-  price NUMERIC(12,0) NOT NULL,
-  duration_min INT DEFAULT 60
+  price NUMERIC(12,0) NOT NULL CHECK (price >= 0),
+  duration_min INT DEFAULT 60 CHECK (duration_min > 0)
 );
 CREATE TABLE IF NOT EXISTS appointments (
   id SERIAL PRIMARY KEY,
-  customer_id INT REFERENCES customers(id) ON DELETE CASCADE,
-  pet_id INT REFERENCES pets(id) ON DELETE SET NULL,
-  service_id INT REFERENCES services(id) ON DELETE SET NULL,
+  customer_id INT NOT NULL REFERENCES customers(id) ON DELETE RESTRICT,
+  pet_id INT NOT NULL REFERENCES pets(id) ON DELETE RESTRICT,
+  service_id INT NOT NULL REFERENCES services(id) ON DELETE RESTRICT,
   appt_time TIMESTAMP NOT NULL,
-  status VARCHAR(20) DEFAULT 'Chờ',
+  status VARCHAR(20) DEFAULT 'Chờ' CHECK (status IN ('Chờ','Đang làm','Hoàn thành','Đã hủy')),
   note TEXT
 );
 INSERT INTO customers (full_name, phone, email, address) VALUES

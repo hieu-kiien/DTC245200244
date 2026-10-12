@@ -8,13 +8,19 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_ADMIN_PASSWORD}
+      APP_DB_USER: ${DB_USER}
+      APP_DB_PASSWORD: ${DB_PASSWORD}
+      MONITOR_DB_USER: ${MONITOR_DB_USER}
+      MONITOR_DB_PASSWORD: ${MONITOR_DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./db/00-create-roles.sh:/docker-entrypoint-initdb.d/00-create-roles.sh:ro
+      - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+      - ./db/20-grant-roles.sh:/docker-entrypoint-initdb.d/20-grant-roles.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${DB_NAME}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -49,7 +55,8 @@ services:
       PGADMIN_CONFIG_SERVER_MODE: "True"
     ports: ["127.0.0.1:5050:80"]
     volumes: [pgadmin:/var/lib/pgadmin]
-    depends_on: [db]
+    depends_on:
+      db: { condition: service_healthy }
     networks: [frontend, backend]
     security_opt: ["no-new-privileges:true"]
 
@@ -57,6 +64,7 @@ services:
     image: nginxinc/nginx-unprivileged:1.27-alpine
     container_name: petshop-nginx
     restart: unless-stopped
+    user: "${NGINX_UID}:${NGINX_GID}"
     ports: ["80:8080", "443:8443"]
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
@@ -83,6 +91,7 @@ services:
     image: gcr.io/cadvisor/cadvisor:v0.49.1
     container_name: petshop-cadvisor
     restart: unless-stopped
+    # NGOẠI LỆ HARDENING: cAdvisor privileged để đọc metrics trên host Docker.
     privileged: true
     devices: ["/dev/kmsg"]
     volumes:
@@ -105,7 +114,7 @@ services:
     container_name: petshop-postgres-exporter
     restart: unless-stopped
     environment:
-      DATA_SOURCE_NAME: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable
+      DATA_SOURCE_NAME: postgresql://${MONITOR_DB_USER}:${MONITOR_DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable
     depends_on:
       db: { condition: service_healthy }
     networks: [backend, monitoring]
@@ -145,6 +154,7 @@ services:
     command: -config.file=/etc/promtail/promtail-config.yaml
     volumes:
       - ./promtail/promtail-config.yaml:/etc/promtail/promtail-config.yaml:ro
+      # Cảnh báo: :ro cho socket không giới hạn các thao tác Docker API.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on: [loki]
     networks: [monitoring]

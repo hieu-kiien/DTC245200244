@@ -8,7 +8,7 @@ let toastTimer;
 function toast(m, bad) { const t = $('#toast'); t.textContent = m; t.className = 'toast' + (bad ? ' bad' : ''); t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 2800); }
 async function api(path, method = 'GET', body) {
   const r = await fetch('/api/' + path, { method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: body ? JSON.stringify(body) : undefined });
-  if (r.status === 401) { logout(); throw new Error('Phiên đăng nhập đã hết hạn'); }
+  if (r.status === 401) { clearSession(); throw new Error('Phiên đăng nhập đã hết hạn'); }
   if (!r.ok) { let m = 'Lỗi ' + r.status; try { m = (await r.json()).error || m; } catch (e) {} throw new Error(m); }
   return r.status === 204 ? null : r.json();
 }
@@ -30,12 +30,17 @@ const M = {
     f: [['name','Tên dịch vụ','text',1],['price','Giá (VNĐ)','number',1],['duration_min','Thời lượng (phút)','number'],['description','Mô tả','textarea']],
     cols: [['Dịch vụ',r=>`<b>${esc(r.name)}</b>`],['Mô tả',r=>esc(r.description)],['Giá',r=>money(r.price)],['Thời lượng',r=>r.duration_min == null ? '' : esc(r.duration_min) + ' phút']] },
   appointments: { t: 'Lịch hẹn', s: 'Đặt lịch và theo dõi trạng thái lịch hẹn', i: 'cal', add: 'Đặt lịch hẹn',
-    f: [['customer_id','Khách hàng','ref','customers',1],['pet_id','Thú cưng','ref','pets'],['service_id','Dịch vụ','ref','services',1],['appt_time','Thời gian','datetime-local',1],
+    f: [['customer_id','Khách hàng','ref','customers',1],['pet_id','Thú cưng','ref','pets',1],['service_id','Dịch vụ','ref','services',1],['appt_time','Thời gian','datetime-local',1],
         ['status','Trạng thái','select',0,['Chờ','Đang làm','Hoàn thành','Đã hủy']],['note','Ghi chú','textarea']],
     cols: [['Thời gian',r=>`<b>${dt(r.appt_time)}</b>`],['Khách hàng',r=>esc(nameOf(L.customers,r.customer_id,'full_name'))],['Thú cưng',r=>esc(nameOf(L.pets,r.pet_id))],['Dịch vụ',r=>esc(nameOf(L.services,r.service_id))],['Trạng thái',r=>badge(r.status,APT_ST)],['Ghi chú',r=>esc(r.note)]] }
 };
 let cur = location.hash.slice(1) in M ? location.hash.slice(1) : 'dashboard', rows = [], editing = null, lastFocus = null;
-function logout() { sessionStorage.removeItem('t'); token = null; show(); }
+function clearSession() { sessionStorage.removeItem('t'); token = null; show(); }
+function logout() {
+  const oldToken = token;
+  clearSession();
+  if (oldToken) fetch('/api/logout', { method: 'POST', headers: { Authorization: 'Bearer ' + oldToken } }).catch(() => {});
+}
 function show() { $('#login').hidden = !!token; $('#main').hidden = !token; if (token) { nav(); load(); } }
 function nav() {
   $('#nav').innerHTML = Object.entries(M).map(([k, m]) => `<a href="#${k}" ${k === cur ? 'aria-current="page"' : ''}>${icon(m.i)}${m.t}</a>`).join('');

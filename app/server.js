@@ -5,7 +5,7 @@ const client = require('prom-client');
 
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 app.use(express.json());
 // Bắt lỗi bất đồng bộ của các route để không treo request (chuyển sang middleware lỗi)
 const wrap = fn => (req, res, next) => { try { Promise.resolve(fn(req, res, next)).catch(next); } catch (e) { next(e); } };
@@ -47,13 +47,14 @@ const q = (text, params) => pool.query(text, params);
 // ---------- Xác thực đơn giản (token trong bộ nhớ) ----------
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASS = process.env.ADMIN_PASSWORD;
-const tokens = new Set();
+const tokens = new Map();
+const TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // token demo hết hạn sau 8 giờ
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body || {};
   const ip = req.ip;
   if (username === ADMIN_USER && password === ADMIN_PASS) {
     const t = crypto.randomBytes(24).toString('hex');
-    tokens.add(t);
+    tokens.set(t, Date.now() + TOKEN_TTL_MS);
     logText('INFO', 'LOGIN_SUCCESS', { user: username, ip });
     return res.json({ token: t });
   }
@@ -63,8 +64,31 @@ app.post('/api/login', (req, res) => {
 });
 function auth(req, res, next) {
   const t = (req.headers.authorization || '').replace('Bearer ', '');
-  if (!tokens.has(t)) return res.status(401).json({ error: 'Chưa đăng nhập' });
+  const expiry = tokens.get(t);
+  if (!expiry || expiry <= Date.now()) {
+    tokens.delete(t);
+    return res.status(401).json({ error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn' });
+  }
   next();
+}
+
+app.post('/api/logout', auth, (req, res) => {
+  const t = (req.headers.authorization || '').replace('Bearer ', '');
+  tokens.delete(t);
+  res.status(204).end();
+});
+
+// Kiểm tra quan hệ giữa khách hàng và thú cưng trước khi lưu lịch hẹn.
+async function validateAppointment(body) {
+  if (!body || !body.customer_id || !body.pet_id || !body.service_id || !body.appt_time)
+    return 'Lịch hẹn phải có khách hàng, thú cưng, dịch vụ và thời gian';
+  if (Number.isNaN(Date.parse(body.appt_time))) return 'Thời gian lịch hẹn không hợp lệ';
+  const result = await q('SELECT customer_id FROM pets WHERE id=$1', [body.pet_id]);
+  if (!result.rows.length) return 'Thú cưng không tồn tại';
+  const owner = result.rows[0].customer_id;
+  if (owner != null && String(owner) !== String(body.customer_id))
+    return 'Thú cưng đã có chủ khác với khách hàng được chọn';
+  return null;
 }
 
 // ---------- CRUD ----------
@@ -74,12 +98,20 @@ function crud(name, table, cols) {
     res.json(r.rows);
   });
   app.post(`/api/${name}`, auth, async (req, res) => {
+    if (table === 'appointments') {
+      const error = await validateAppointment(req.body);
+      if (error) return res.status(400).json({ error });
+    }
     const vals = cols.map(c => (req.body[c] === '' ? null : req.body[c]));
     const r = await q(`INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map((_, i) => '$' + (i + 1)).join(',')}) RETURNING *`, vals);
     log('INFO', 'CREATE', { table, id: r.rows[0].id });
     res.status(201).json(r.rows[0]);
   });
   app.put(`/api/${name}/:id`, auth, async (req, res) => {
+    if (table === 'appointments') {
+      const error = await validateAppointment(req.body);
+      if (error) return res.status(400).json({ error });
+    }
     const vals = cols.map(c => (req.body[c] === '' ? null : req.body[c]));
     const r = await q(`UPDATE ${table} SET ${cols.map((c, i) => `${c}=$${i + 1}`).join(',')} WHERE id=$${cols.length + 1} RETURNING *`, [...vals, req.params.id]);
     res.json(r.rows[0] || {});
@@ -138,6 +170,8 @@ app.use(express.static(__dirname + '/public'));
 
 app.use((err, req, res, next) => {
   if (err.code === '23503') { logText('WARN', 'FK_VIOLATION', { path: req.path }); return res.status(400).json({ error: 'Dữ liệu liên kết không hợp lệ' }); }
+  if (err.code === '23514') { logText('WARN', 'CHECK_VIOLATION', { path: req.path }); return res.status(400).json({ error: 'Giá trị hoặc trạng thái không hợp lệ' }); }
+  if (err.code === '22P02' || err.code === '22007') { return res.status(400).json({ error: 'Định dạng dữ liệu không hợp lệ' }); }
   if (err.code === '23502') { logText('WARN', 'MISSING_FIELD', { path: req.path }); return res.status(400).json({ error: 'Thiếu dữ liệu bắt buộc' }); }
   logText('ERROR', 'UNHANDLED', { msg: String(err.message).replace(/\s+/g, '_'), path: req.path });
   res.status(500).json({ error: 'Lỗi hệ thống' });
