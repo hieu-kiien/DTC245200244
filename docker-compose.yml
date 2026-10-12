@@ -1,0 +1,74 @@
+# Hệ thống Quản lý Cửa hàng Thú cưng – Docker Compose
+name: petshop
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: petshop-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [backend]
+
+
+  webapp:
+    build: ./app
+    container_name: petshop-webapp
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      ADMIN_USER: ${ADMIN_USER}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [frontend, backend]
+
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: petshop-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+    ports: ["127.0.0.1:5050:80"]
+    volumes: [pgadmin:/var/lib/pgadmin]
+    depends_on: [db]
+    networks: [frontend, backend]
+
+
+  nginx:
+    image: nginxinc/nginx-unprivileged:1.27-alpine
+    container_name: petshop-nginx
+    restart: unless-stopped
+    ports: ["80:8080", "443:8443"]
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/proxy_params.conf:/etc/nginx/proxy_params.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on: [webapp]
+    networks: [frontend]
+
+
+networks:
+  frontend:            # mạng tiếp xúc với người dùng
+  backend:             # mạng chứa CSDL, cô lập hoàn toàn khỏi bên ngoài
+    internal: true
+
+volumes:
+  pgdata:
+  pgadmin:
