@@ -25,8 +25,8 @@ groups:
         title: Brute-force đăng nhập (>5 lần thất bại / 1 phút)
         condition: C
         for: 0s
-        noDataState: OK
-        execErrState: OK
+        noDataState: NoData
+        execErrState: Error
         isPaused: false
         labels:
           severity: critical
