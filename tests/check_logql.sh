@@ -20,18 +20,32 @@ async function queryRange(q) {
   if(!r.ok)throw new Error('Loki HTTP '+r.status);
   const j=await r.json();
   if(j.status!=='success')throw new Error('Loki query error');
-  return (j.data?.result||[]).reduce((n,x)=>n+(x.values||[]).length,0);
+  return (j.data?.result||[]).flatMap(x=>(x.values||[]).map(v=>v[1]));
 }
 (async()=>{
   for (const query of queries) {
     let count=0, err='';
     for(let i=0;i<30;i++){
-      try {count=await queryRange(query.q);if(count>0)break;}
+      try {count=(await queryRange(query.q)).length;if(count>0)break;}
       catch(e){err=e.message;}
       await wait(3000);
     }
     if(count===0)throw new Error('Không tìm thấy '+query.name+(err?' / '+err:''));
     console.log('PASS: '+query.name+' ('+count+' log)');
   }
+  // Kiểm chứng đúng cảnh báo brute-force chuyển Firing và gửi webhook về webapp.
+  let received=false;
+  for (let i=0;i<40;i++){
+    try {
+      const lines=await queryRange('{job="webapp"} |= "ALERT_RECEIVED"');
+      if(lines.some(l=>l.includes('status=firing')&&l.includes('Brute-force'))){
+        received=true;
+        console.log('PASS: Grafana Alerting -> webhook -> webapp ALERT_RECEIVED');
+        break;
+      }
+    }catch(e){console.error('Đợi webhook: '+e.message);}
+    await wait(3000);
+  }
+  if(!received)throw new Error('Không thấy webhook Firing brute-force sau 120 giây');
 })().catch(e=>{console.error(e);process.exit(1)});
 JS

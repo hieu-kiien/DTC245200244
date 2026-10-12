@@ -99,6 +99,7 @@ docker compose logs --tail 80 db webapp nginx prometheus loki promtail grafana
 curl -sk https://localhost/health
 curl -skI https://localhost/
 ./tests/smoke_api.sh
+./tests/check_logql.sh   # thử 30 đăng nhập sai và kiểm tra Loki + webhook Grafana
 ```
 
 Chi tiết các lệnh và danh sách ảnh cần chụp: **[TEST_DEMO.md](TEST_DEMO.md)**. Các lệnh cấu hình và workflow CI chỉ kiểm tra một phần; không chứng minh đã chạy trọn stack.

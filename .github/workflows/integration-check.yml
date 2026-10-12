@@ -49,7 +49,7 @@ jobs:
               time.sleep(5)
           else: raise SystemExit('One or more required Prometheus jobs are not UP')
           PY
-      - name: Verify centralized log ingestion in Loki
+      - name: Verify Loki log ingestion and Grafana brute-force webhook
         run: ./tests/check_logql.sh
       - name: Inspect service status and recent logs
         if: always()
