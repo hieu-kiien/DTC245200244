@@ -2,7 +2,9 @@ FROM node:20-alpine
 ENV NODE_ENV=production
 WORKDIR /usr/src/app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --omit=dev --no-audit --no-fund --fetch-retries=5 \
+    && node -e "require('express'); require('pg'); require('prom-client')" \
+    && npm cache clean --force
 COPY --chown=node:node . .
 # Hardening: chạy bằng user non-root "node"
 USER node

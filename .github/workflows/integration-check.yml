@@ -17,6 +17,10 @@ jobs:
           ./scripts/gen-cert.sh
       - name: Start Docker Compose stack
         run: docker compose up -d --build
+      - name: Verify runtime Node dependencies
+        run: docker compose exec -T webapp node -e "require('express'); require('pg'); require('prom-client')"
+      - name: Validate Nginx configuration
+        run: docker compose exec -T nginx nginx -t
       - name: Wait for webapp and PostgreSQL
         run: |
           for i in $(seq 1 60); do
