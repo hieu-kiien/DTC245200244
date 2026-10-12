@@ -20,5 +20,8 @@ jobs:
           ./scripts/gen-env.sh
           ./scripts/gen-cert.sh
           docker compose config -q
+      - name: Reject private/internal package registries
+        run: |
+          node -e "const p=require('./app/package-lock.json').packages; const bad=Object.values(p).filter(v=>v.resolved&&!v.resolved.startsWith('https://registry.npmjs.org/')); if(bad.length)throw Error('Non-public npm package sources: '+bad.length)"
       - name: Validate dependency lockfile
         run: npm ci --prefix app --omit=dev
